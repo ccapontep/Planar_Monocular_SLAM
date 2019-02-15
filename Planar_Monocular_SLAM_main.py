@@ -29,6 +29,9 @@ plt.ion()
 # Import files
 from Planar_Monocular_SLAM_data import get_all_data, get_new_seqdata
 from Planar_Monocular_SLAM_prediction import prediction_model
+from Planar_Monocular_SLAM_error_ellipse import error_ellipse
+from Planar_Monocular_SLAM_correction import correction
+from Planar_Monocular_SLAM_newlandmark import newlandmark
 
 # Set working directory
 directory = os.getcwd()
@@ -49,13 +52,17 @@ world_data, trajectory_data, camera_data = get_all_data(dataset_dir)
 # Initialize variables
 
 # Initial robot pose has already been set in Planar_Monocular_SLAM_data file
-mu = np.array([0, 0, 0], dtype='float64')
+mu = np.array([[0], [0], [0]], dtype='float64')
 # Initilize sigma
 sigma = np.identity(3, dtype='float64')
-mu_sum = np.array([0, 0, 0], dtype='float64')
+mu_sum = np.array([[0], [0], [0]], dtype='float64')
+
+id_to_state_map = np.ones((1000, 1), dtype='int32')*-1
+state_to_id_map = np.ones((1000, 1), dtype='int32')*-1
 
 # Main simulation cycle
-for t in range(336):
+# for testing only do first 3 sequences, later return to 336
+for t in range(100):
     print('t = ', t)
     # Get the data from the correct sequence
 #    _, _, _, traj_odo_prev, traj_odo_curr, _, _ = get_new_seqdata(dataset_dir, t)
@@ -65,61 +72,43 @@ for t in range(336):
     # EKF predict
     mu, sigma = prediction_model(mu, sigma, control_input)
     
-    # Sort the eigenvalue by highest to lowest value to draw correctly
-#    https://stackoverflow.com/questions/12301071/multidimensional-confidence-intervals
-#    https://www.soest.hawaii.edu/martel/Courses/GG303/Lab.09.2017.pptx.pdf -- slide 20
-    '''
-        def eigsorted(cov):
-        vals, vecs = np.linalg.eigh(cov)
-        vals_sor, vecs_sor = np.linalg.eigh(cov)
-        vals_sor, vecs_sor = vals_sor[0:2], vecs_sor[0:2, 0:2]
-        order = vals.argsort()[::-1]
-        vals_sor, vecs_sor = vals[order], vecs[:, order] 
-        return vals, vecs, vals_sor, vecs_sor
-    
-    eigenvalues, vecs, vals_sor, vecs_sor = eigsorted(sigma)
-    print('eigenvalues, vecs, vals_sor, vecs_sor', eigenvalues, vecs, vals_sor, vecs_sor)
-#   eigen function returns vectors as: column v[:,i] is the eigenvector corresponding to the eigenvalue w[i]
-    theta = np.degrees(np.arctan2(vecs_sor[1,0], vecs_sor[0,0])) # angle direction of error
-    '''
-    
-    def eigsorted(cov):
-        vals, vecs = np.linalg.eigh(cov)
-        vals_sor, vecs_sor = np.linalg.eigh(cov)
-        order = vals.argsort()[::-1]
-        vals_sor, vecs_sor = vals[order], vecs[:, order] 
-        return vals, vecs, vals_sor, vecs_sor
-    
-    eigenvalues, vecs, vals_sor, vecs_sor = eigsorted(sigma[0:2, 0:2])
-    print('eigenvalues, vecs, vals_sor, vecs_sor', eigenvalues, vecs, vals_sor, vecs_sor)
-#   eigen function returns vectors as: column v[:,i] is the eigenvector corresponding to the eigenvalue w[i]
-    theta = np.degrees(np.arctan2(vecs_sor[1,0], vecs_sor[0,0])) # angle direction of error
-#   To find the error of mu to draw ellipse by: 2 * nstd * np.sqrt(vals)
-#   where nstd is the std deviation, in this case 1 std
-    eigen_error = np.array([2*math.sqrt(eigenvalues[0]), 2*math.sqrt(eigenvalues[1]), 
-                      theta])
-#    math.sqrt(abs(mu[2]*180/math.pi))
-    print('mu', mu)
-    print('sigma', sigma)
-    print('error along mu', eigen_error)
-    
-##    Obtain current observation using the data association
+    # Get the error along the mean, to be used for the error 2D ellipse drawing
+    eigen_error = error_ellipse(sigma)
+
+#    print('mu', mu)
+#    print('sigma', sigma)
+#    print('error along mu', eigen_error)
+
+    # bookkeeping: to and from mapping between robot pose (x,y, theta) and landmark indices (i)
+    # all mappings are initialized with invalid value -1 (meaning that the index is not mapped)
+    # 1000 landmarks are known to appear so this is the size of the bookkeeping matrix
+
+
+##   Obtain current observation using the data association
 #    observations_t = associateLandmarkIDs(mu, sigma, observations(t), state_to_id_map);
 #
-##    EKF correct
-#    mu, sigma, id_to_state_map, state_to_id_map = correction(mu, sigma, observations_t, id_to_state_map, state_to_id_map);
-#
-##    ADD new landmarks to the state
-#    mu, sigma, id_to_state_map, state_to_id_map, last_landmark_id = addNewLandmarks(mu, sigma, observations_t, id_to_state_map, state_to_id_map, last_landmark_id);
+#    EKF correct
+    # Test using the world map with the landmarks already known. later will replace
+    # world_data for meas_XXXXX.
+    mu, sigma, id_to_state_map, state_to_id_map = correction(mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map);
+    print('correction shape mu', mu.shape)
 
+##    ADD new landmarks to the state
+    mu, sigma, id_to_state_map, state_to_id_map = newlandmark(mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map);
+    print('add new landmark shape mu', mu.shape)
+#    print('mu', mu[0,0], mu[1,0])
+
+    l_x = np.array(mu[3:len(mu+1):2])
+    l_y = np.array(mu[4:len(mu+1):2])
 #    mu_sum = np.vstack([mu_sum, mu])
 #    print('mu_sum', mu_sum)
     # Plot landmarks, robot trajectory, error in each
-    plt.scatter(world_data[:,1], world_data[:,2], color='red', marker = 'o', s =1)
-    plt.scatter(mu[0], mu[1], color='blue', marker = 'o', s=1, zorder=1)
+    plt.scatter(world_data[:,1], world_data[:,2], color='yellow', marker = 'o', s =1)
+    pred_l = plt.scatter(l_x[:,0], l_y[:,0], color='red', marker = 'o', s=1)
+    plt.scatter(mu[0,0], mu[1,0], color='blue', marker = 'o', s=1, zorder=1)
     plt.scatter(traj_gt_curr[0], traj_gt_curr[1], color='green', marker = 'o', s=1, zorder=1) # traj ground truth
-    plt.plot(mu[0], mu[1], linestyle='-', linewidth= 1, zorder=2)
-    ellipse = Ellipse(mu, eigen_error[0], eigen_error[1], angle = theta,
+#    plt.plot(mu[0, 0], mu[1, 0], linestyle='-', linewidth= 1, zorder=2)
+    ellipse = Ellipse(mu, eigen_error[0], eigen_error[1], angle = eigen_error[2],
                       edgecolor = 'b', facecolor = 'none', lw=1)
     plt.axes().add_artist(ellipse)
 #    plt.scatter(mu_sum[:,0], mu_sum[:,1], color='blue', marker = 'o', s=1, zorder=1)
@@ -128,6 +117,7 @@ for t in range(336):
     plt.show()
     plt.pause(0.0001)
     ellipse.remove() # remove previous ellipse so a new one can be drawm with new movement
+    pred_l.remove()
     
 """
 #--------------------------------- VISUALIZATION-------------------------------

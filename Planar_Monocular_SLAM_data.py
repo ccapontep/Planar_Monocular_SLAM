@@ -38,7 +38,7 @@ def get_all_data(dataset_dir):
     #'truth_pose_y', 'truth_pose_theta']
     camera_data = [['cam_matrix', np.matrix([[180, 0, 320], [0, 180, 240], [0, 0, 1]])],
                    ['cam_transform', np.matrix([[0, 0, 1, 0.2], [-1, 0, 0, 0], [0, 
-                                               -1, 0, 0], [0, 0, 0, 0]])],
+                                               -1, 0, 0], [0, 0, 0, 1]])],
                    ['z_near', 0],
                    ['z_far', 5],
                    ['width', 640],
@@ -80,13 +80,16 @@ def get_new_seqdata(dataset_dir, i):
     
     
     # Get all landmark points
+    meas_lpoint = []
     for j in range(3, len(meas_curr)):      
-        meas_lpoint = [np.matrix([meas_curr[j][1], meas_curr[j][2]]), 
-                       np.matrix([meas_curr[j][3], meas_curr[j][4]]),
-                       np.matrix([meas_curr[j][5], meas_curr[j][6], meas_curr[j][7],
+        meas_lpoint_item = [np.array([meas_curr[j][1], meas_curr[j][2]], dtype=int), 
+                       np.array([meas_curr[j][3], meas_curr[j][4]], dtype='float'),
+                       np.array([meas_curr[j][5], meas_curr[j][6], meas_curr[j][7],
                         meas_curr[j][8], meas_curr[j][9], meas_curr[j][10],
                         meas_curr[j][11], meas_curr[j][12], meas_curr[j][13],
-                        meas_curr[j][14]])]
+                        meas_curr[j][14]], dtype='float')]
+        meas_lpoint += [meas_lpoint_item]
+    
     
     # Get previous and current trajectory data -- for odometry and ground truth
     #    traj_prev = [trajectory_data[i-1,1], trajectory_data[i-1,2], trajectory_data[i-1,3]]
