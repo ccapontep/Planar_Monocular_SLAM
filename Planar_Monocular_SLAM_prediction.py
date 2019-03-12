@@ -12,6 +12,8 @@ Planar Monocular SLAM -- Prediction Function Setup
 # Import libraries
 import math
 import numpy as np
+from mpmath import mp
+mp.dps = 8 # precision for rounding the trig functions
 
 from Planar_Monocular_SLAM_transition import transition_model
 
@@ -57,8 +59,8 @@ def prediction_model(mu_state, sigma_state, control_input):
     # Jacobian A
     # Initialize A as an identity and fill only the robot block
     A = np.identity(dimension_mu[0])
-    A[0:3,0:3] = np.matrix([[1, 0, -delta_trans*math.sin(theta + delta_rot1)],
-                             [0, 1, delta_trans*math.cos(theta + delta_rot1)],
+    A[0:3,0:3] = np.matrix([[1, 0, -delta_trans*mp.sin(theta + delta_rot1)],
+                             [0, 1, delta_trans*mp.cos(theta + delta_rot1)],
                              [0, 0, 1]])
     
     # Jacobian B
@@ -67,15 +69,15 @@ def prediction_model(mu_state, sigma_state, control_input):
     # delta_rot2, the derivative will be based on delta_trans, delta_rot2
     B = np.zeros((dimension_mu[0], dimension_u))
     B[0:3,:] = np.matrix([
-                [-delta_trans*math.sin(theta + delta_rot1), math.cos(theta + delta_rot1), 0],
-                [delta_trans*math.cos(theta + delta_rot1), math.sin(theta + delta_rot1), 0],
+                [-delta_trans*mp.sin(theta + delta_rot1), mp.cos(theta + delta_rot1), 0],
+                [delta_trans*mp.cos(theta + delta_rot1), mp.sin(theta + delta_rot1), 0],
                 [1,                                              0,                      1]])
             
     # Control noise u
-    sigma_u = 0.001           # constant part
-    sigma_R1 = abs(delta_rot1) + abs(delta_trans)      #rotational velocity2 dependent part
-    sigma_T = abs(delta_trans) + abs(delta_rot1 + delta_rot2)    #translational velocity dependent part
-    sigma_R2 = abs(delta_rot2) + abs(delta_trans)      #rotational velocity2 dependent part
+    sigma_u = 0.001**2           # constant part
+    sigma_R1 = (abs(delta_rot1) + abs(delta_trans))**2      #rotational velocity2 dependent part
+    sigma_T = (abs(delta_trans) + abs(delta_rot1 + delta_rot2))**2    #translational velocity dependent part
+    sigma_R2 = (abs(delta_rot2) + abs(delta_trans))**2      #rotational velocity2 dependent part
     
     #compose control noise covariance sigma_u
     sigma_u = np.matrix([

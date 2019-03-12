@@ -11,6 +11,8 @@ Planar Monocular SLAM -- Transition Function Setup
 
 # Import libraries
 import math
+from mpmath import mp
+mp.dps = 8 # precision for rounding the trig functions
 
 
 
@@ -79,8 +81,8 @@ def transition_model(mu_state_curr, control_input):
     mu_state_curr_y = mu_state_curr[1]   
     mu_state_curr_theta = mu_state_curr[2]
 #   For ease of use
-    c = math.cos(theta + delta_rot1)
-    s = math.sin(theta + delta_rot1)
+    c = mp.cos(theta + delta_rot1)
+    s = mp.sin(theta + delta_rot1)
 
 #    (x' ) = (    x + delta_trans * cos(th + delta_rot1)     )
 #    (y' ) = (    y + delta_trans * sin(th + delta_rot1)     )

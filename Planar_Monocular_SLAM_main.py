@@ -49,21 +49,25 @@ world_data, trajectory_data, camera_data = get_all_data(dataset_dir)
 
 ###############################################################################
 
-# Initialize variables
 
+# Initialize variables
 # Initial robot pose has already been set in Planar_Monocular_SLAM_data file
 mu = np.array([[0], [0], [0]], dtype='float64')
 # Initilize sigma
 sigma = np.identity(3, dtype='float64')
 mu_sum = np.array([[0], [0], [0]], dtype='float64')
 
-id_to_state_map = np.ones((1000, 1), dtype='int32')*-1
+id_to_state_map = np.ones((1000, 11), dtype='float64')*-1
 state_to_id_map = np.ones((1000, 1), dtype='int32')*-1
+# will retain the pose of the robot for each time sequence
+robot_pose_map = np.zeros((336, 3)) 
 
 # Main simulation cycle
 # for testing only do first 3 sequences, later return to 336
 for t in range(100):
     print('t = ', t)
+    
+ 
     # Get the data from the correct sequence
 #    _, _, _, traj_odo_prev, traj_odo_curr, _, _ = get_new_seqdata(dataset_dir, t)
     meas_gt_curr, meas_odo_curr, meas_lpoint, control_input, traj_gt_prev, traj_gt_curr= get_new_seqdata(dataset_dir, t)
@@ -74,6 +78,17 @@ for t in range(100):
     
     # Get the error along the mean, to be used for the error 2D ellipse drawing
     eigen_error = error_ellipse(sigma)
+
+    # Save current robot pose to the map for landmark initialization below
+#    robot_pose_map[t,0] = mu[0]
+#    robot_pose_map[t,1] = mu[1]
+#    robot_pose_map[t,2] = mu[2]
+    
+    # To check
+    robot_pose_map[t,0] = trajectory_data[t, 4]
+    robot_pose_map[t,1] = trajectory_data[t, 5]
+    robot_pose_map[t,2] = trajectory_data[t, 6]
+
 
 #    print('mu', mu)
 #    print('sigma', sigma)
@@ -90,11 +105,11 @@ for t in range(100):
 #    EKF correct
     # Test using the world map with the landmarks already known. later will replace
     # world_data for meas_XXXXX.
-    mu, sigma, id_to_state_map, state_to_id_map = correction(mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map);
-    print('correction shape mu', mu.shape)
+#    mu, sigma, id_to_state_map, state_to_id_map = correction(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map);
+#    print('correction shape mu', mu.shape)
 
 ##    ADD new landmarks to the state
-    mu, sigma, id_to_state_map, state_to_id_map = newlandmark(mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map);
+    mu, sigma, id_to_state_map, state_to_id_map = newlandmark(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map) 
     print('add new landmark shape mu', mu.shape)
 #    print('mu', mu[0,0], mu[1,0])
 
@@ -103,8 +118,20 @@ for t in range(100):
 #    mu_sum = np.vstack([mu_sum, mu])
 #    print('mu_sum', mu_sum)
     # Plot landmarks, robot trajectory, error in each
-    plt.scatter(world_data[:,1], world_data[:,2], color='yellow', marker = 'o', s =1)
-    pred_l = plt.scatter(l_x[:,0], l_y[:,0], color='red', marker = 'o', s=1)
+#    print(state_to_id_map)
+#    visible_l = state_to_id_map
+    state_items = np.array(list(set(list(state_to_id_map.flatten())))).size
+    if state_items > 1:
+        for k, val in enumerate(state_to_id_map[:,0]):
+            if val != -1:
+                gt_l = plt.scatter(world_data[val,1], world_data[val,2], color='red', marker = '+', s =3)
+                ann_lgt = plt.annotate(val, (world_data[val,1], world_data[val,2]))
+                ann_lgt.set_fontsize(6)
+                ann_lgt.set_color('red')
+                ann_lpred = plt.annotate(val, (l_x[k,0], l_y[k,0]))
+                ann_lpred.set_fontsize(6)
+                ann_lpred.set_color('purple')
+    pred_l = plt.scatter(l_x[:,0], l_y[:,0], color='purple', marker = 'o', s=2)
     plt.scatter(mu[0,0], mu[1,0], color='blue', marker = 'o', s=1, zorder=1)
     plt.scatter(traj_gt_curr[0], traj_gt_curr[1], color='green', marker = 'o', s=1, zorder=1) # traj ground truth
 #    plt.plot(mu[0, 0], mu[1, 0], linestyle='-', linewidth= 1, zorder=2)
@@ -118,6 +145,13 @@ for t in range(100):
     plt.pause(0.0001)
     ellipse.remove() # remove previous ellipse so a new one can be drawm with new movement
     pred_l.remove()
+    if state_items > 1: 
+        gt_l.remove()    
+        ann_lgt.remove()
+        ann_lpred.remove()
+    
+
+
     
 """
 #--------------------------------- VISUALIZATION-------------------------------

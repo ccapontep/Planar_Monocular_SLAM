@@ -13,9 +13,14 @@ Planar Monocular SLAM -- Correction Function Setup
 import numpy as np
 import math
 import os
+from mpmath import mp
+mp.dps = 6 # precision for rounding the trig functions
 
-from Planar_Monocular_SLAM_data import 
-from Planar_Monocular_SLAM_functools import box_plus
+from Planar_Monocular_SLAM_data import get_all_data
+#from Planar_Monocular_SLAM_functools import box_plus
+from Planar_Monocular_SLAM_uv_to_xy import uv_to_xy
+from Planar_Monocular_SLAM_CamL_CoorL import dist_uv, undist_uv
+
 
 ########################## ERASE LATER 
 # Set working directory
@@ -23,6 +28,10 @@ directory = os.getcwd()
 
 # Set directory with dataset
 dataset_dir = os.path.join(directory, "dataset")
+
+world_data, trajectory_data, _ = get_all_data(dataset_dir)
+
+
 
 
 ###############################################################################
@@ -52,7 +61,7 @@ dataset_dir = os.path.join(directory, "dataset")
 #  [mu, sigma]: the updated mean and covariance
 #  [id_to_state_map, state_to_id_map]: the updated mapping vector between landmark position in mu vector and its id
 
-def correction(mu, sigma, observations, id_to_state_map, state_to_id_map):
+def correction(t, mu, sigma, observations, id_to_state_map, state_to_id_map, robot_pose_map):
     
     # Get how many landmarks have been seen in current step
     M = len(observations)
@@ -62,12 +71,16 @@ def correction(mu, sigma, observations, id_to_state_map, state_to_id_map):
 
     # Dimension of the entire state (robot pose + landmark positions)
     dimension_state = len(mu)
-    mu_t            = mu[0:2] # translational part of the robot pose
-    mu_theta        = mu[2] # rotation of the robot
+#    mu_t            = mu[0:2] # translational part of the robot pose
+#    mu_theta        = mu[2] # rotation of the robot
+    
+    # check with the correct robot trajectory:
+    mu_t = trajectory_data[t, 4:6].reshape(2,1)
+    mu_theta = trajectory_data[t, 6]
     
     # Precomputed variables
-    c   = math.cos(mu_theta)
-    s   = math.sin(mu_theta)
+    c   = mp.cos(mu_theta)
+    s   = mp.sin(mu_theta)
     Rt  = np.matrix([[c,s], [-s, c]])    #transposed rotation matrix
     Rtp = np.matrix([[-s,c], [-c,-s]]) #derivative of transposed rotation matrix
     
@@ -88,20 +101,24 @@ def correction(mu, sigma, observations, id_to_state_map, state_to_id_map):
   
         # Get info about each observed landmark
         measurement = observations[i]
-#        print('mu', mu.shape)
+        meas_land = int(measurement[0][1]) # current landmark number
+                
         # Get the position in the state vector corresponding to the actual measurement
-        n = id_to_state_map[measurement[0][1], 0]
+        n = id_to_state_map[meas_land, 4]
 
         # Temp for correct location of landmark from world_data
         world_data, _, _ = get_all_data(dataset_dir)
-        l_loc = world_data[measurement[0][1]][1:4]
+        l_loc = world_data[meas_land][1:4]
+        landmark_loc = np.array([l_loc[0], l_loc[1], l_loc[2]])
         #l_appear = world_data[n][4:14]
 
-    #IF current landmark is a REOBSERVED LANDMARK
-        if n != -1:
+        # IF current landmark is a REOBSERVED LANDMARK for the third time
+        # Check that it is the next time step than when it was added to the state
+#        and id_to_state_map[meas_land, 5] == t
+        if id_to_state_map[meas_land, 4] != -1 :
 
             # Compute index in the state vector corresponding to the pose of the landmark	
-            id_state = 3+2*(n-1)
+            id_state = int(3+2*n)
         
             # initialize data structures
             z_out = np.zeros((2, 1))
@@ -109,23 +126,62 @@ def correction(mu, sigma, observations, id_to_state_map, state_to_id_map):
 
             # Increment the counter of observations from already known landmarks
             number_known_landmarks += 1
-            # Add landmark measurement -- add to end of array two rows, one for x and y
-            z_out = np.array([[l_loc[0]], [l_loc[1]]]) ######## change both later 
+            
+            # Get the measurement col, row of each landmark (u, v, 1)
+            u = measurement[1][0]
+            v = measurement[1][1] 
+        
+            # Calculate the x and y from the given u and v coordinates
+            landmark_pos_world, id_to_state_map, alpha, beta, b, row, h_c_reverse, theta = uv_to_xy(t, u, v, meas_land, id_to_state_map, robot_pose_map)
 
-            # Get the position (x,y) of the landmark in the state
+#            h_c_reverse = np.array(id_to_state_map[meas_land, 8:11]).reshape(3,1)
+#            print('h_c_reverse', h_c_reverse)
+            # Convert back to uv coordinate
+            u_rev = h_c_reverse[0,0]/h_c_reverse[2,0] 
+            v_rev = h_c_reverse[1,0]/h_c_reverse[2,0]
+    
+            # Calculate distored pixels
+            u_dist, v_dist = dist_uv(u_rev, v_rev)
+            
+#            pred_angles = undist_uv(u_dist, v_dist)
+            
+#            h_pred = undist_uv(u_dist, v_dist)
+            h_pred = np.array([[u_dist], [v_dist]]).reshape(2,1)
+
+            # Create array of the actual uv coordinates measured
+            z_out = np.array([[u], [v]]).reshape(2,1)
+            
+#            https://tel.archives-ouvertes.fr/tel-00136307/document
+            
+            error = z_out - h_pred
+            
+#            print('h_pred \n', h_pred)
+#            print('z_out \n', z_out)
+#            print('z_out - h_pred \n', z_out - h_pred)
+#            print('u', u)
+#            print('u + error[0,0]', u + error[0,0])
+#            print('pred landmark_pos_world \n', landmark_pos_world)
+
+            # Calculate the x and y from the given u and v coordinates
+            landmark_pos_world, id_to_state_map, alpha, beta, b, row, h_c_reverse, theta = uv_to_xy(t, (u + error[0,0])/2, (v + error[1,0])/2, meas_land, id_to_state_map, robot_pose_map)
+
+#            print('correction landmark_pos_world \n', landmark_pos_world)
+#            print('gt landmark_loc \n', landmark_loc)
+
+            # Get the current position (x,y) of the landmark in the state
             landmark_mu = mu[id_state:id_state+2, :]
 
             # Prediction of where that landmark would be seen
             delta_t            = landmark_mu - mu_t
-            measure_prediction = Rt * delta_t
-
             # Add landmark measurement prediction
-            h_pred = measure_prediction
+#            h_pred = Rt * delta_t
+
+
             
             # Jacobian piece w.r.t. robot
             C_m          = np.zeros((2, dimension_state))
             C_m[0:2,0:2] = -Rt
-            C_m[0:2,2:3]   = Rtp*delta_t
+            C_m[0:2,2]   = (Rtp*delta_t).reshape(2,)
 
             #jacobian piece w.r.t. landmark
             C_m[:,id_state:id_state+2] = Rt
@@ -147,7 +203,7 @@ def correction(mu, sigma, observations, id_to_state_map, state_to_id_map):
     if (number_known_landmarks > 0):
       
         #observation noise
-        noise   = 0.001
+        noise   = 0.001**2
         sigma_z = np.identity(2*number_known_landmarks)*noise
 
         #Kalman gain

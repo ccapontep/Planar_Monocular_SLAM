@@ -12,6 +12,8 @@ Planar Monocular SLAM -- Helpful Tool Functions Setup
 # Import libraries
 import numpy as np
 import math
+from mpmath import mp
+mp.dps = 8 # precision for rounding the trig functions
 
 
 ###############################################################################
@@ -26,12 +28,13 @@ import math
 # H:[ R t ] 3x3 homogeneous transformation matrix, r translation vector
 # v: [x,y,theta]  2D pose vector
 
-def v2t(v, th):
-    c = math.cos(th)
-    s = math.sin(th)
-    H = np.matrix([[c, -s, v[0]],
-                    [s, c, v[1]],
-                    [0, 0,  1  ]])
+def v2t(v, v3, th):
+    c = mp.cos(th)
+    s = mp.sin(th)
+    H = np.matrix([[c, -s, 0, v[0,0]],
+                    [s, c, 0, v[1,0]],
+                    [0, 0, 1, v3    ],
+                    [0, 0, 0, 1     ]], dtype='float64')
     return(H)
     
 # computes the pose 2d pose vector v from an homogeneous transform H
@@ -39,8 +42,17 @@ def v2t(v, th):
 # v: [x,y,theta]  2D pose vector
 def t2v(H):
     v = np.zeros((3, 1))
-    v[0:2, 0] = H[0:2,3]
+    v[0:2] = H[0:2,2]
     v[2,0] = math.atan2(H[1,0], H[0,0])
+    
+    return(v)
+    
+# computes the pose 2d pose vector v from an homogeneous transform H
+# H:[ R t ] 3x3 homogeneous transformation matrix, r translation vector
+# v: [x,y]  2D position vector
+def t2v2(H):
+    v = np.zeros((2, 1))
+    v[0:2] = H[0:2,2]
     
     return(v)
 
