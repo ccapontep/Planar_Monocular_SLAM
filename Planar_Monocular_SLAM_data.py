@@ -65,7 +65,7 @@ def get_meas_data(doc_name, dataset_dir):
 # Acquire the next measurement after robot moves and keep info about previous measurement
 #traj_prev = [0, 0]
 #while robot_moved == True:
-def get_new_seqdata(dataset_dir, i):
+def get_new_seqdata(dataset_dir, i, robot_pose_map, robot_gt_pose_map):
     _, trajectory_data, _ = get_all_data(dataset_dir)
     #    for i in range(336): # control has t+1 compared to meas info since control is u_t-1
     #        meas_prev = meas_curr
@@ -94,18 +94,54 @@ def get_new_seqdata(dataset_dir, i):
     # Get previous and current trajectory data -- for odometry and ground truth
     #    traj_prev = [trajectory_data[i-1,1], trajectory_data[i-1,2], trajectory_data[i-1,3]]
     #       The control starts at t-1 
-    if i == 0:
-        traj_odo_prev = [0, 0, 0] # Initial odometry control robot pose at 0
-        traj_gt_prev = [0, 0, 0] # Initial ground truth of control robot pose at 0
-    else:
-        traj_odo_prev = [trajectory_data[i-1,1], trajectory_data[i-1,2], trajectory_data[i-1,3]]
-        traj_gt_prev = [trajectory_data[i-1,4], trajectory_data[i-1,5], trajectory_data[i-1,6]]
+#    if i == 0:
+#        traj_odo_prev = [0, 0, 0] # Initial odometry control robot pose at 0
+#        traj_gt_prev = [0, 0, 0] # Initial ground truth of control robot pose at 0
+#    else:
+#        traj_odo_prev = [trajectory_data[i-1,1], trajectory_data[i-1,2], trajectory_data[i-1,3]]
+#        traj_gt_prev = [trajectory_data[i-1,4], trajectory_data[i-1,5], trajectory_data[i-1,6]]
+#    
+#    traj_odo_curr = [trajectory_data[i,1], trajectory_data[i,2], trajectory_data[i,3]]
+#    traj_gt_curr = [trajectory_data[i,4], trajectory_data[i,5], trajectory_data[i,6]]
+#
+#    control_input = np.array([traj_odo_prev, traj_odo_curr])
     
-    traj_odo_curr = [trajectory_data[i,1], trajectory_data[i,2], trajectory_data[i,3]]
-    traj_gt_curr = [trajectory_data[i,4], trajectory_data[i,5], trajectory_data[i,6]]
+#    if i == 0:
+#        # Initial odometry and ground truth control robot pose at 0
+#        robot_pose_map[i,0:3] = 0 
+#        robot_gt_pose_map[i,0:3] = 0
+#    else:
 
-    control_input = np.array([traj_odo_prev, traj_odo_curr])
-    return(meas_gt_curr, meas_odo_curr, meas_lpoint, control_input, traj_gt_prev, traj_gt_curr)
+
+    # New x, y, and theta for actual and ground truth robot pose
+#    x = robot_pose_map[i-1,0] + delta_x
+#    y = robot_pose_map[i-1,1] + delta_y
+#    theta = robot_pose_map[i-1,2] + delta_theta
+#    
+#    x_gt = robot_gt_pose_map[i-1,0] + delta_x_gt
+#    y_gt = robot_gt_pose_map[i-1,1] + delta_y_gt
+#    theta_gt = robot_gt_pose_map[i-1,2] + delta_theta_gt
+    
+    x = trajectory_data[i, 1]
+    y = trajectory_data[i, 2]
+    theta = trajectory_data[i, 3]
+    
+    x_gt = trajectory_data[i, 4]
+    y_gt = trajectory_data[i, 5]
+    theta_gt = trajectory_data[i, 6]
+    
+    # Save the pose for actual and ground truth on their respective maps
+    robot_pose_map[i,0] = x
+    robot_pose_map[i,1] = y
+    robot_pose_map[i,2] = theta
+    
+    robot_gt_pose_map[i,0] = x_gt
+    robot_gt_pose_map[i,1] = y_gt
+    robot_gt_pose_map[i,2] = theta_gt
+
+    control_input = np.array([robot_pose_map[i-1,:], robot_pose_map[i,:]])
+    
+    return(meas_gt_curr, meas_odo_curr, meas_lpoint, control_input, robot_pose_map, robot_gt_pose_map)
 #    return(meas_gt_curr, meas_odo_curr, meas_lpoint, traj_odo_prev, traj_gt_prev)
 
 

@@ -19,7 +19,8 @@ mp.dps = 6 # precision for rounding the trig functions
 from Planar_Monocular_SLAM_data import get_all_data
 #from Planar_Monocular_SLAM_functools import box_plus
 from Planar_Monocular_SLAM_uv_to_xy import uv_to_xy
-from Planar_Monocular_SLAM_CamL_CoorL import dist_uv, undist_uv
+from Planar_Monocular_SLAM_CamL_CoorL import dist_uv, undist_uv, ray_reverse, cam_coor, Rot_quaternion
+
 
 
 ########################## ERASE LATER 
@@ -75,15 +76,19 @@ def correction(t, mu, sigma, observations, id_to_state_map, state_to_id_map, rob
 #    mu_theta        = mu[2] # rotation of the robot
     
     # check with the correct robot trajectory:
-    mu_t = trajectory_data[t, 4:6].reshape(2,1)
+    mu_t = np.zeros((3,1))
+    mu_t[0:2, 0] = trajectory_data[t, 4:6]
     mu_theta = trajectory_data[t, 6]
     
     # Precomputed variables
     c   = mp.cos(mu_theta)
     s   = mp.sin(mu_theta)
-    Rt  = np.matrix([[c,s], [-s, c]])    #transposed rotation matrix
-    Rtp = np.matrix([[-s,c], [-c,-s]]) #derivative of transposed rotation matrix
-    
+    R   = np.matrix([[c, -s, 0], [s, c, 0], [0,0,1]], dtype = 'float')  #rotation matrix
+    Rt  = np.matrix([[c,s, 0], [-s, c, 0], [0,0,1]], dtype = 'float')    #transposed rotation matrix
+    Rtp = np.matrix([[-s, c, 0], [-c,-s, 0], [0,0,1]], dtype = 'float') #derivative of transposed rotation matrix
+#    Rtp_inv = np.eye(3,3)
+#    Rtp_inv[0:2, 0:2] = np.linalg.inv(Rtp)
+
     # Count for amount of observations of old landmarks known
     number_known_landmarks = 0
 
@@ -132,13 +137,24 @@ def correction(t, mu, sigma, observations, id_to_state_map, state_to_id_map, rob
             v = measurement[1][1] 
         
             # Calculate the x and y from the given u and v coordinates
-            landmark_pos_world, id_to_state_map, alpha, beta, b, row, h_c_reverse, theta = uv_to_xy(t, u, v, meas_land, id_to_state_map, robot_pose_map)
+#            landmark_pos_rob, id_to_state_map, alpha, beta, b, row, theta, Rq_curr, Rq_der, h_c_reverse, obs_landmark_w = uv_to_xy(t, u, v, meas_land, id_to_state_map, robot_pose_map)
+            rob_pose_curr = trajectory_data[t, 4:7].reshape(3,1)
+            _, Cam_pose_curr, _ = cam_coor(rob_pose_curr, rob_pose_curr)
+            Rq_curr = Rot_quaternion(Cam_pose_curr)
+            h_c_reverse = ray_reverse(landmark_loc.reshape(3,1), mu_t, Rq_curr)
 
 #            h_c_reverse = np.array(id_to_state_map[meas_land, 8:11]).reshape(3,1)
 #            print('h_c_reverse', h_c_reverse)
+            
+#            h_c_reverse = (id_to_state_map[meas_land, 8:11]).reshape(3,1)
+#            h_c_reverse = landmark_loc.reshape(3,1)
+#            print('h_c_reverse \n', h_c_reverse)
+            
             # Convert back to uv coordinate
             u_rev = h_c_reverse[0,0]/h_c_reverse[2,0] 
             v_rev = h_c_reverse[1,0]/h_c_reverse[2,0]
+            
+            print('u_rev v_rev', u_rev, v_rev)
     
             # Calculate distored pixels
             u_dist, v_dist = dist_uv(u_rev, v_rev)
@@ -155,36 +171,31 @@ def correction(t, mu, sigma, observations, id_to_state_map, state_to_id_map, rob
             
             error = z_out - h_pred
             
-#            print('h_pred \n', h_pred)
-#            print('z_out \n', z_out)
-#            print('z_out - h_pred \n', z_out - h_pred)
+            print('h_pred \n', h_pred)
+            print('z_out \n', z_out)
+            print('z_out - h_pred \n', error)
 #            print('u', u)
 #            print('u + error[0,0]', u + error[0,0])
 #            print('pred landmark_pos_world \n', landmark_pos_world)
 
-            # Calculate the x and y from the given u and v coordinates
-            landmark_pos_world, id_to_state_map, alpha, beta, b, row, h_c_reverse, theta = uv_to_xy(t, (u + error[0,0])/2, (v + error[1,0])/2, meas_land, id_to_state_map, robot_pose_map)
-
-#            print('correction landmark_pos_world \n', landmark_pos_world)
-#            print('gt landmark_loc \n', landmark_loc)
+#            # Calculate the x and y from the given u and v coordinates
+#            landmark_pos_rob, id_to_state_map, alpha, beta, b, row, h_c_reverse, theta = uv_to_xy(t, (u + error[0,0])/2, (v + error[1,0])/2, meas_land, id_to_state_map, robot_pose_map)
 
             # Get the current position (x,y) of the landmark in the state
-            landmark_mu = mu[id_state:id_state+2, :]
-
-            # Prediction of where that landmark would be seen
-            delta_t            = landmark_mu - mu_t
-            # Add landmark measurement prediction
-#            h_pred = Rt * delta_t
-
-
+#            landmark_mu = np.ones((3,1))
+#            landmark_mu[0:3, 0] = (mu[id_state:id_state+3, :]).reshape(3,)
+#            landmark_mu[2,0] = 
+            landmark_mu = landmark_loc.reshape(3,1)
+            print('landmark_mu \n', landmark_mu)
+            print('mu_t \n', mu_t)
             
             # Jacobian piece w.r.t. robot
             C_m          = np.zeros((2, dimension_state))
-            C_m[0:2,0:2] = -Rt
-            C_m[0:2,2]   = (Rtp*delta_t).reshape(2,)
+            C_m[0:2,0:2] = -Rq_curr[0:2,0:2]
+            C_m[0:2,2]   = (Rq_der*(landmark_mu - mu_t)).reshape(2,)
 
             #jacobian piece w.r.t. landmark
-            C_m[:,id_state:id_state+2] = Rt
+            C_m[:,id_state:id_state+3] = Rq_curr
 
 
             #add jacobian piece to main jacobian
@@ -214,7 +225,7 @@ def correction(t, mu, sigma, observations, id_to_state_map, state_to_id_map, rob
         mu         = mu + K*innovation        
         
         #update sigma
-        sigma = (np.eye(dimension_state) - K*C_t)*sigma	
+        sigma = sigma - K * (C_t * sigma * np.transpose(C_t) + sigma_z) * np.transpose(K) 	
       
     return (mu, sigma, id_to_state_map, state_to_id_map)
 

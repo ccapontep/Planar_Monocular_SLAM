@@ -57,20 +57,23 @@ mu = np.array([[0], [0], [0]], dtype='float64')
 sigma = np.identity(3, dtype='float64')
 mu_sum = np.array([[0], [0], [0]], dtype='float64')
 
-id_to_state_map = np.ones((1000, 11), dtype='float64')*-1
+id_to_state_map = np.ones((1000, 12), dtype='float64')*-1
 state_to_id_map = np.ones((1000, 1), dtype='int32')*-1
 # will retain the pose of the robot for each time sequence
 robot_pose_map = np.zeros((336, 3)) 
+robot_gt_pose_map = np.zeros((336, 3)) 
+
+bbb = []
 
 # Main simulation cycle
 # for testing only do first 3 sequences, later return to 336
-for t in range(100):
+for t in range(336):
     print('t = ', t)
     
  
     # Get the data from the correct sequence
 #    _, _, _, traj_odo_prev, traj_odo_curr, _, _ = get_new_seqdata(dataset_dir, t)
-    meas_gt_curr, meas_odo_curr, meas_lpoint, control_input, traj_gt_prev, traj_gt_curr= get_new_seqdata(dataset_dir, t)
+    meas_gt_curr, meas_odo_curr, meas_lpoint, control_input, robot_pose_map, robot_gt_pose_map = get_new_seqdata(dataset_dir, t, robot_pose_map, robot_gt_pose_map)
     
     
     # EKF predict
@@ -83,12 +86,6 @@ for t in range(100):
 #    robot_pose_map[t,0] = mu[0]
 #    robot_pose_map[t,1] = mu[1]
 #    robot_pose_map[t,2] = mu[2]
-    
-    # To check
-    robot_pose_map[t,0] = trajectory_data[t, 4]
-    robot_pose_map[t,1] = trajectory_data[t, 5]
-    robot_pose_map[t,2] = trajectory_data[t, 6]
-
 
 #    print('mu', mu)
 #    print('sigma', sigma)
@@ -105,50 +102,57 @@ for t in range(100):
 #    EKF correct
     # Test using the world map with the landmarks already known. later will replace
     # world_data for meas_XXXXX.
-#    mu, sigma, id_to_state_map, state_to_id_map = correction(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map);
-#    print('correction shape mu', mu.shape)
+    mu, sigma, id_to_state_map, state_to_id_map = correction(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map);
+    print('correction shape mu', mu.shape)
 
 ##    ADD new landmarks to the state
-    mu, sigma, id_to_state_map, state_to_id_map = newlandmark(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map) 
+    mu, sigma, id_to_state_map, state_to_id_map = newlandmark(t, mu, sigma, meas_lpoint, id_to_state_map, state_to_id_map, robot_pose_map, robot_gt_pose_map) 
     print('add new landmark shape mu', mu.shape)
+#    bbb.append(bb)
+    # mean of the value of b over 28 time steps to get a paralax of 6 deg was 0.68454
+#    print('************* bb *********** \n', bbb)
 #    print('mu', mu[0,0], mu[1,0])
+    
 
-    l_x = np.array(mu[3:len(mu+1):2])
-    l_y = np.array(mu[4:len(mu+1):2])
-#    mu_sum = np.vstack([mu_sum, mu])
-#    print('mu_sum', mu_sum)
-    # Plot landmarks, robot trajectory, error in each
-#    print(state_to_id_map)
-#    visible_l = state_to_id_map
-    state_items = np.array(list(set(list(state_to_id_map.flatten())))).size
-    if state_items > 1:
-        for k, val in enumerate(state_to_id_map[:,0]):
-            if val != -1:
-                gt_l = plt.scatter(world_data[val,1], world_data[val,2], color='red', marker = '+', s =3)
-                ann_lgt = plt.annotate(val, (world_data[val,1], world_data[val,2]))
-                ann_lgt.set_fontsize(6)
-                ann_lgt.set_color('red')
-                ann_lpred = plt.annotate(val, (l_x[k,0], l_y[k,0]))
-                ann_lpred.set_fontsize(6)
-                ann_lpred.set_color('purple')
-    pred_l = plt.scatter(l_x[:,0], l_y[:,0], color='purple', marker = 'o', s=2)
-    plt.scatter(mu[0,0], mu[1,0], color='blue', marker = 'o', s=1, zorder=1)
-    plt.scatter(traj_gt_curr[0], traj_gt_curr[1], color='green', marker = 'o', s=1, zorder=1) # traj ground truth
-#    plt.plot(mu[0, 0], mu[1, 0], linestyle='-', linewidth= 1, zorder=2)
-    ellipse = Ellipse(mu, eigen_error[0], eigen_error[1], angle = eigen_error[2],
-                      edgecolor = 'b', facecolor = 'none', lw=1)
-    plt.axes().add_artist(ellipse)
-#    plt.scatter(mu_sum[:,0], mu_sum[:,1], color='blue', marker = 'o', s=1, zorder=1)
-#    plt.plot(mu_sum[:,0], mu_sum[:,1], linestyle='-', linewidth= 1, zorder=2)
-#    plt.draw()
-    plt.show()
-    plt.pause(0.0001)
-    ellipse.remove() # remove previous ellipse so a new one can be drawm with new movement
-    pred_l.remove()
-    if state_items > 1: 
-        gt_l.remove()    
-        ann_lgt.remove()
-        ann_lpred.remove()
+    # Separate landmark x and y for each
+    l_x = np.array(mu[3:len(mu+1):3])
+    l_y = np.array(mu[4:len(mu+1):3])
+
+    keyboardClick=False
+    while keyboardClick != True:
+        keyboardClick=plt.waitforbuttonpress()
+        state_items = np.array(list(set(list(state_to_id_map.flatten())))).size
+        if state_items > 1:
+            for k, val in enumerate(state_to_id_map[:,0]):
+                if val != -1:
+                    gt_l = plt.scatter(world_data[val,1], world_data[val,2], color='red', marker = '+', s =3)
+                    ann_lgt = plt.annotate(val, (world_data[val,1], world_data[val,2]))
+                    ann_lgt.set_fontsize(6)
+                    ann_lgt.set_color('red')
+    #                ann_lpred = plt.annotate(val, (l_x[k,0], l_y[k,0]))
+    #                ann_lpred.set_fontsize(6)
+    #                ann_lpred.set_color('purple')
+        # Predicted landmarks
+    #    pred_l = plt.scatter(l_x[:,0], l_y[:,0], color='purple', marker = 'o', s=2)
+        # Plot actual robot tranjectory
+        plt.scatter(mu[0,0], mu[1,0], color='blue', marker = 'o', s=1, zorder=1)
+        # Plot ground truth trajectory of robot
+        plt.scatter(robot_gt_pose_map[t, 0], robot_gt_pose_map[t,1], color='green', marker = 'o', s=1, zorder=1) # traj ground truth
+    #    plt.plot(mu[0, 0], mu[1, 0], linestyle='-', linewidth= 1, zorder=2)
+        ellipse = Ellipse(mu, eigen_error[0], eigen_error[1], angle = eigen_error[2],
+                          edgecolor = 'b', facecolor = 'none', lw=1)
+        plt.axes().add_artist(ellipse)
+    #    plt.scatter(mu_sum[:,0], mu_sum[:,1], color='blue', marker = 'o', s=1, zorder=1)
+    #    plt.plot(mu_sum[:,0], mu_sum[:,1], linestyle='-', linewidth= 1, zorder=2)
+    #    plt.draw()
+        plt.show()
+        plt.pause(0.0001)
+        ellipse.remove() # remove previous ellipse so a new one can be drawm with new movement
+#        pred_l.remove()
+        if state_items > 1: 
+            gt_l.remove()    
+            ann_lgt.remove()
+#            ann_lpred.remove()
     
 
 

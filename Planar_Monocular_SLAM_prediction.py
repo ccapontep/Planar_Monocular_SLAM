@@ -40,6 +40,8 @@ from Planar_Monocular_SLAM_transition import transition_model
 # outputs 
 # [mu_state, sigma_state] are mean and covariance of the estimate after transition
 
+# From book: Probabilistic Robotics from Thrun, Fox & Burgard pg. 108
+### SLAMming with Spheros An impact-based approach to Simultaneous Localization and Mapping
 
 def prediction_model(mu_state, sigma_state, control_input):
 

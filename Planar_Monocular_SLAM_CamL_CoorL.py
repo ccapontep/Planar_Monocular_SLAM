@@ -16,7 +16,7 @@ import math
 
 # Import files
 from Planar_Monocular_SLAM_data import get_all_data
-from Planar_Monocular_SLAM_functools import v2t
+from Planar_Monocular_SLAM_functools import v2t, v2t_derivative
 
 # Set working directory
 directory = os.getcwd()
@@ -36,11 +36,8 @@ cam_transl_h[0, 3] = cam_transform[0, 3]
 cam_transl = (cam_transl_h[0:3,3]).reshape(3,1)
 
 # World to camera transform
-cam_transl_T = -np.matrix(np.transpose(cam_rot)[0:3,0:3]) * cam_transl
-cam_rot_T = np.matrix(np.transpose(cam_rot)[0:3,0:3])
-cam_world_cam_h = np.eye(4)
-cam_world_cam_h[0:3,0:3] = cam_rot_T
-cam_world_cam_h[0:3,3] = cam_transl_T.reshape(3,)
+cam_transform_inv = np.linalg.inv(cam_transform)
+
 
 
 # Get initial locations of Principal Point Offset
@@ -49,6 +46,17 @@ v_0 = cam_matrix[1,2]
 
 # Get focal length
 f = cam_matrix[0,0]
+
+# Locations in of image plane to use for P4P problem
+x1 = 0
+x2 = camera_data[4][1]
+x3 = camera_data[4][1]
+x4 = 0
+
+y1 = camera_data[5][1]
+y2 = camera_data[5][1]
+y3 = 0
+y4 = 0
 
 # Distortion coefficient -- quantity that camera optics distorts the images
 # approximate based on an assumption of a R-T Model with division correction as  
@@ -79,59 +87,69 @@ d = 9.46804e-8 # distortion in the radial direction
 # and by transforming (rot + trans) the robot location it into camera coordinate
 def cam_coor(rob_pose1, rob_pose2):
 
-    # Transpose camera rotation and translation matrices
-    cam_rot_T = np.matrix(np.transpose(np.copy(cam_rot))[0:3,0:3])
-#    cam_trans_T = np.array(cam_rot_T * -cam_transl)
+    # Robot pose relative to first time it saw it
+#    rob_pose2_xy = (rob_pose2[0:2,0] - rob_pose1[0:2,0]).reshape(2,1)
+#    rob_pose2_theta = rob_pose2[2,0] - rob_pose1[2,0]
     
     # Convert robot pose to homogeneous coordinates
     Rob_pose1 = v2t(np.array(rob_pose1[0:2,0]).reshape(2,1), 0, rob_pose1[2,0])
-    Rob_pose2 = v2t(np.array(rob_pose2[0:2,0].reshape(2,1)), 0, rob_pose2[2,0]) 
-    print('Rob_pose1 \n', Rob_pose1)
+    Rob_pose2 = v2t(np.array(rob_pose2[0:2,0]).reshape(2,1), 0, rob_pose2[2,0])
     
-    # Create base for homogeneous coordinates
-    Cam_pose_1 = np.eye(4)
-    Cam_pose_2 = np.eye(4)
+#    Rob_pose2 = v2t(rob_pose2_xy, 0, rob_pose2_theta) 
+    
+    # Get the derivative of the second pose, for the correction step
+    Rob_pose2_der = v2t_derivative(np.array(rob_pose2[0:2,0].reshape(2,1)), 0, rob_pose2[2,0])
+    
 
-    # Add rotation
-    Cam_pose_1[0:3,0:3] = cam_rot_T * np.matrix(Rob_pose1[0:3,0:3])
-    Cam_pose_2[0:3,0:3] = cam_rot_T * np.matrix(Rob_pose2[0:3,0:3])
-    
-    # Add translation
-    Cam_pose_1[0:3,3] = (cam_rot_T * (cam_transl + np.array(Rob_pose1[0:3,3]))).reshape(3,)
-    Cam_pose_2[0:3,3] = (cam_rot_T * (cam_transl + np.array(Rob_pose2[0:3,3]))).reshape(3,)
-    print('Cam_pose_1 \n', Cam_pose_1)
-    
-#    # Get camera rotation from robot coordinate
-#    Cam_rot_1 = cam_rot_T * np.matrix(Rob_pose1[0:3,0:3])
-#    Cam_rot_2 = cam_rot_T * np.matrix(Rob_pose2[0:3,0:3])
-#
-#    # Get camera translation from robot coordinate
-#    cam_trans_T_1 = (-Cam_rot_1 * (cam_transl + np.array(Rob_pose1[0:3,3]))).reshape(3,)
-#    cam_trans_T_2 = (-Cam_rot_2 * (cam_transl + np.array(Rob_pose2[0:3,3]))).reshape(3,)
-#
-#    # Create base for homogeneous coordinates
-#    Cam_pose_1 = np.eye(4)
-#    Cam_pose_2 = np.eye(4)
-#
 #    # Add rotation
-#    Cam_pose_1[0:3,0:3] = Cam_rot_1
-#    Cam_pose_2[0:3,0:3] = Cam_rot_2
+#    Cam_rot_1 = Rob_pose1[0:3,0:3] * cam_transform[0:3,0:3]
+#    Cam_rot_2 = Rob_pose2[0:3,0:3] * cam_transform[0:3,0:3] 
 #    
 #    # Add translation
-#    Cam_pose_1[0:3,3] = cam_trans_T_1
-#    Cam_pose_2[0:3,3] = cam_trans_T_2
+#    cam_trans_T_1 = ((np.array(Rob_pose1[0:3,3]) + cam_transl)).reshape(3,)
+#    cam_trans_T_2 = ((np.array(Rob_pose2[0:3,3]) + cam_transl)).reshape(3,)
+#
+#    # Create base for homogeneous coordinates
+#    Rob_pose1_c = np.eye(4)
+#    Rob_pose2_c = np.eye(4)
+#
+#    # Add rotation
+#    # best
+#    Rob_pose1_c[0:3,0:3] = Cam_rot_1
+#    Rob_pose2_c[0:3,0:3] = Cam_rot_2
+#    
+##    Rob_pose1_c[0:3,0:3] = cam_transform[0:3,0:3] * Rob_pose1[0:3,0:3]
+##    Rob_pose2_c[0:3,0:3] = cam_transform[0:3,0:3] * Rob_pose2[0:3,0:3]
+#    
+##    # Add translation
+#    Rob_pose1_c[0:3,3] = cam_trans_T_1
+#    Rob_pose2_c[0:3,3] = cam_trans_T_2
+#    
+##    print('rob_pose2 \n', rob_pose2)
+##    print('Rob_pose2 \n', Rob_pose2)    
+##    print('Cam_rot_2 \n', Cam_rot_2)
+##    print('cam_trans_T_2 \n', cam_trans_T_2)
+##    print('Cam_pose_2 \n', Cam_pose_2)
+#    
+#    # Get camera rotation from robot coordinate
+##    Cam_pose_1 = cam_transform_inv * Rob_pose1
+##    Cam_pose_2 = cam_transform_inv * Rob_pose2 
+#    
+#    Cam_pose_1 = Rob_pose1_c
+#    Cam_pose_2 = Rob_pose2_c
     
-#    print('rob_pose2 \n', rob_pose2)
-#    print('Rob_pose2 \n', Rob_pose2)    
-#    print('Cam_rot_2 \n', Cam_rot_2)
-#    print('cam_trans_T_2 \n', cam_trans_T_2)
-#    print('Cam_pose_2 \n', Cam_pose_2)
+    Cam_pose_1 = Rob_pose1 * cam_transform
+    Cam_pose_2 = Rob_pose2 * cam_transform
     
-    # Get camera rotation from robot coordinate
-#    Cam_pose_1 = cam_world_cam_h * Rob_pose1
-#    Cam_pose_2 = cam_world_cam_h * Rob_pose2
+    Cam_pose_2_der = Rob_pose2_der * cam_transform
     
-    return(Cam_pose_1, Cam_pose_2)
+#    print('Rob_pose1_c', Rob_pose1_c)
+#    print('Cam_pose_1 \n', Cam_pose_1)
+    
+#    A = np.matrix([[[x1*f], [y1*f], [0], [0], [-u_0*x1], [-u_0*y1], [f], [0]],
+#                   [[0], [0], [x1*f], [y1*f], [-v_0*x1], [-v_0*y1],])
+    
+    return(Cam_pose_1, Cam_pose_2, Cam_pose_2_der)
 
 
 ##############################################################################
@@ -139,6 +157,10 @@ def cam_coor(rob_pose1, rob_pose2):
 
 # This function calculates the current quaternion and R(q) rotation of the camera
 def Rot_quaternion(Cam_pose):
+    
+#    from pyquaternion import Quaternion
+#    
+#    pyQ = Quaternion(matrix=Cam_pose)
 
     # Get the quaternion using the current rotation matrix of the camera transform
     # from eqns A.2 and A.3 in https://pdfs.semanticscholar.org/3a02/048014b570c3081cf28b444c420af025d785.pdf
@@ -173,7 +195,8 @@ def Rot_quaternion(Cam_pose):
     
     # Quaternion rotation has been tested where Rq*Rq_T is equal to the identity
     # http://orion.lcg.ufrj.br/games/ArcBall/Rotation-formalisms-in-three-dimensions.pdf
-    
+
+
     q4 = 0.5 * math.sqrt(1 + Cam_pose[0,0] + Cam_pose[1,1] + Cam_pose[2,2])
     q1 = (Cam_pose[2,1] - Cam_pose[1,2]) / (4 * q4)
     q2 = (Cam_pose[0,2] - Cam_pose[2,0]) / (4 * q4)
@@ -197,6 +220,10 @@ def Rot_quaternion(Cam_pose):
                     [R_col1_2, R_col2_2, R_col3_2], 
                     [R_col1_3, R_col2_3, R_col3_3]])
     
+#    print('pyQ ', pyQ)
+#    print('q1', q1, 'q2', q2, 'q3', q3, 'q4', q4)
+#    print('Rq_0', Rq[0,0])
+#    print('pyQ_0', 1-2*(pyQ[2]**2 + pyQ[3]**2))
     
     return(Rq)
 
@@ -256,7 +283,7 @@ def beta_calc(u, v, Cam_pose_1, Cam_pose_2):
     
 # This function calculates the angle gamma determined in a similar way as beta
 # but using instead the directional projection ray vector h2 and the vector b2
-def gamma_calc(u, v, Cam_pos_1, Cam_pos_2):
+def gamma_calc(u, v, Cam_pos_1, Cam_pos_2, Cam_pose_2_der):
 
 ### Calculate the gamma value for observation of the first about the second 
 # observation of this feature:
@@ -279,8 +306,12 @@ def gamma_calc(u, v, Cam_pos_1, Cam_pos_2):
     # Dot product of 3x1 vectors divided by their Euclidean distance of each 
     # multiplied to obtain the angle of the unit vector norm
     gamma = math.acos(np.dot(H_C_2, b2) / (np.linalg.norm(H_C_2) * np.linalg.norm(b2)))
+    
+    # Get quaternion derivative for correction step
+    Rq_der = Rot_quaternion(Cam_pose_2_der)
+    
 #    print('gamma \n', gamma)
-    return(gamma, H_C_2, Rq)
+    return(gamma, H_C_2, Rq, Rq_der)
     
 ##############################################################################
 
@@ -294,7 +325,7 @@ def alpha_calc(beta, gamma):
 ##############################################################################
     
 # This function calculates the location of the landmark after the second observation
-def landmark_pos(beta, alpha, gamma, H_C_2, b, Cam_pose_1, Cam_pose_2, Rq_curr, Rq_1):
+def landmark_pos(beta, alpha, gamma, H_C_2, b, Cam_pose_1, Cam_pose_2, Rq_curr, mu_t, R):
     
     # Calculate the value 'row': inverse depth between the feature and the robot
 
@@ -303,38 +334,54 @@ def landmark_pos(beta, alpha, gamma, H_C_2, b, Cam_pose_1, Cam_pose_2, Rq_curr, 
     # theta, phi represent the azimuth and the elevation respectively respect 
     # to the world reference 
     
-# works prev
-    theta = math.atan2(-H_C_2[1], -H_C_2[0])
-    phi = math.acos(H_C_2[2] / (math.sqrt((H_C_2[0])**2 + (H_C_2[1])**2) + (H_C_2[2])**2))
-    
-#    theta = math.atan2(-H_C_2[1], -H_C_2[0])
+# Regular without changes
+#    theta = math.atan2(H_C_2[1], H_C_2[0])
 #    phi = math.acos(H_C_2[2] / (math.sqrt((H_C_2[0])**2 + (H_C_2[1])**2) + (H_C_2[2])**2))
+#    
+#    
+#    m_dir_vec = np.array([[math.cos(theta) * math.sin(phi)], 
+#                          [math.sin(theta) * math.sin(phi)], 
+#                          [math.cos(phi)]]).reshape(3,1)
+
+# works prev    
+#    theta = math.atan2(-H_C_2[2], -H_C_2[1])
+#    phi = math.acos(H_C_2[0] / (math.sqrt((H_C_2[0])**2 + (H_C_2[1])**2) + (H_C_2[2])**2))
+#  
+#
+## Works prev
+#    m_dir_vec = np.array([[math.cos(theta) * math.sin(phi)], 
+#                          [-math.sin(theta) * math.sin(phi)], 
+#                          [math.cos(phi)]]).reshape(3,1)
+    
+# Test with  x y z changed to z, -x, -y -- works best
+    theta = math.atan2(-H_C_2[0], H_C_2[2])
+    phi = math.acos(-H_C_2[1] / (math.sqrt(H_C_2[0]**2 + H_C_2[1]**2 + H_C_2[2]**2)))
   
 
-
-
 # Works prev
-    m_dir_vec = np.array([[math.cos(theta) * math.sin(phi)], 
-                          [math.sin(theta) * math.sin(phi)], 
-                          [math.cos(phi)]]).reshape(3,1)
+    m_dir_vec = np.array([[-math.sin(theta) * math.sin(phi)], 
+                          [math.cos(phi)], 
+                          [-math.cos(theta) * math.sin(phi)]]).reshape(3,1)
     
-#    m_dir_vec = np.array([[math.cos(theta) * math.sin(phi)], 
-#                          [-math.cos(phi)], 
-#                          [-math.sin(theta) * math.sin(phi)]]).reshape(3,1)
-
-#    m_dir_vec = np.array([[math.sin(theta) * math.sin(phi)], 
-#                          [-math.cos(theta) * math.sin(phi)], 
-#                          [-math.cos(phi)]]).reshape(3,1)
-#    m_dir_vec = np.array([[(math.cos(phi))], 
-#                          [-(math.sin(theta) * math.sin(phi))], 
-#                          [-(math.cos(theta) * math.sin(phi))]]).reshape(3,1)
-#    m_dir_vec = np.array([[(math.cos(theta) * math.sin(phi))], 
-#                           [(math.sin(theta) * math.sin(phi))], 
-#                           [(math.cos(phi))]]).reshape(3,1)
+# From the paper
+#    theta = math.atan2(H_C_2[1], math.sqrt((H_C_2[0])**2 + (H_C_2[2])**2))
+#    phi = math.atan2(-H_C_2[0], -H_C_2[2])
+#  
+#
+## Works prev
+#    m_dir_vec = np.array([[-math.sin(phi)], 
+#                          [-math.sin(theta) * math.cos(phi)], 
+#                          [math.cos(theta) * math.cos(phi)]]).reshape(3,1)
 
     
     # Calculate the landmark position in camera coordinate
-    obs_landmark_pos = (Cam_pose_1[0:3,3]).reshape(3,1) + (m_dir_vec / row)
+    obs_landmark_pos = (Cam_pose_2[0:3,3]).reshape(3,1) + (m_dir_vec / row)
+ 
+
+    
+    obs_landmark_w = mu_t + (R*obs_landmark_pos)
+    
+    
 #    obs_landmark_pos_h = v2t(obs_landmark_pos[0:2,0], obs_landmark_pos[2,0], 0)
 #    Rq_curr_h_T = np.eye(3)
 #    Rq_curr_h_T[0:3,0:3] = np.transpose(Rq_curr)
@@ -351,28 +398,45 @@ def landmark_pos(beta, alpha, gamma, H_C_2, b, Cam_pose_1, Cam_pose_2, Rq_curr, 
 #    landmark_pos_world = np.transpose(Rq_curr) * (obs_landmark_pos - cam_transl)
 #    landmark_pos_cam = offset_coord * (Rq_curr_h_T * cam_transform * obs_landmark_pos_h)[0:3, 3]
 #    landmark_pos_world = obs_landmark_pos
-#    R_curr_T = Rot_quaternion(np.transpose(np.matrix(Cam_pose_2[0:3,0:3])))
     
-    h_c_reverse = (np.transpose(Rq_curr) * (obs_landmark_pos - (Cam_pose_2[0:3,3]).reshape(3,1)))
-#    h_c_reverse = R_curr_T * (obs_landmark_pos - (Cam_pose_2[0:3,3]).reshape(3,1))
+    h_c_reverse = (np.transpose(Rq_curr) * ((obs_landmark_pos - Cam_pose_1[0:3,3])).reshape(3,1))
+#    print('(obs_landmark_pos - Cam_pose_1[0:3,3]) \n', (obs_landmark_pos - Cam_pose_1[0:3,3]))
 
+    # Different way to calculate, get same thing
+#    R_curr_inv = Rot_quaternion(np.linalg.inv(np.matrix(Cam_pose_2[0:3,0:3])))
+#    h_c_reverse = R_curr_inv * (obs_landmark_pos - (Cam_pose_2[0:3,3]).reshape(3,1))
     
-    return(obs_landmark_pos, b, h_c_reverse, theta)
+    return(obs_landmark_pos, row, b, theta, Rq_curr, h_c_reverse, obs_landmark_w)
+    
+
+def ray_reverse(landmark_pos_world, mu_t, Rq_curr):
+    
+    
+#    print('(landmark_pos_world - mu_t) \n', (landmark_pos_world - mu_t))
+    h_c_reverse = (np.transpose(Rq_curr) * ((landmark_pos_world - mu_t) ).reshape(3,1))
+    
+#    h_c_reverse = landmark_pos_world - mu_t
+    
+#    h_c_reverse = landmark_pos_world 
+    
+    return(h_c_reverse)
 
 
 def dist_uv(u_rev, v_rev):
 
     # Get undistorted pixel coordinates
-    u_und = u_0 - f*u_rev
-    v_und = v_0 - f*v_rev
+    u_und = u_0 + f*u_rev
+    v_und = v_0 + f*v_rev
     
     # Calculate the Euclidean distance between the initial position and current landmark
-    r = math.sqrt((u_und - u_0)**2 + (v_und - v_0)**2)
+#    r = math.sqrt((u_und - u_0)**2 + (v_und - v_0)**2)
+#    
+#    # Calculate the undistored pixel locations
+#    u_dist = ((u_und - u_0)/math.sqrt(1+(2*d*r**2))) + u_0
+#    v_dist = ((v_und - v_0)/math.sqrt(1+(2*d*r**2))) + v_0
     
-    # Calculate the undistored pixel locations
-    u_dist = ((u_und - u_0)/math.sqrt(1+(2*d*r**2))) + u_0
-    v_dist = ((v_und - v_0)/math.sqrt(1+(2*d*r**2))) + v_0
-    
+    u_dist = u_und
+    v_dist = v_und
     
     return(u_dist, v_dist)
     

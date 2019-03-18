@@ -14,6 +14,7 @@ import numpy as np
 import math
 from mpmath import mp
 mp.dps = 8 # precision for rounding the trig functions
+mp.pretty = True
 
 
 ###############################################################################
@@ -26,7 +27,7 @@ mp.dps = 8 # precision for rounding the trig functions
 # This function converts a perturbation into a matrix
 # computes the homogeneous transform matrix H of the pose vector v
 # H:[ R t ] 3x3 homogeneous transformation matrix, r translation vector
-# v: [x,y,theta]  2D pose vector
+# v: [x,y], v3: [z], th:theta
 
 def v2t(v, v3, th):
     c = mp.cos(th)
@@ -35,6 +36,21 @@ def v2t(v, v3, th):
                     [s, c, 0, v[1,0]],
                     [0, 0, 1, v3    ],
                     [0, 0, 0, 1     ]], dtype='float64')
+
+    return(H)
+    
+# This function converts a perturbation into a matrix
+# computes the homogeneous transform matrix H of the derivative of the pose vector v
+# H:[ R t ] 3x3 homogeneous transformation matrix, r translation vector
+# v: [x,y], v3: [z], th:theta
+def v2t_derivative(v, v3, th):
+    c = mp.cos(th)
+    s = mp.sin(th)
+    H = np.matrix([[-s, c, 0, v[0,0]],
+                   [-c,-s, 0, v[1,0]],
+                   [0, 0, 1, v3    ],
+                   [0, 0, 0, 1     ]], dtype='float64')
+
     return(H)
     
 # computes the pose 2d pose vector v from an homogeneous transform H

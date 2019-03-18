@@ -61,7 +61,7 @@ def transition_model(mu_state_curr, control_input):
     ## Get the deltas for rotation and translation given the control info from
     # odometry as [  [x, y, theta] [x', y', theta']  ]
     
-    #   Get the previous trajectory parameters
+    #  Get the previous trajectory parameters
     x = control_input[0][0]
     y = control_input[0][1]
     theta = control_input[0][2]
