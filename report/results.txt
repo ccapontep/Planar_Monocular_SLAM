@@ -1,0 +1,8 @@
+Correction of robot pose: 
+ [[0.31970648]
+ [0.27858502]
+ [1.9672791 ]]
+Ground Truth of robot pose: 
+ [[0.322606]
+ [0.280024]
+ [1.95864 ]]
