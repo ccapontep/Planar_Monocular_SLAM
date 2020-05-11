@@ -33,3 +33,8 @@ Expected Output:
    - instantiate the landmarks using the odometry, and perform SLAM in bearing-only fashion
  - 2. Bundle Adjustment:
    - embed the obtained measures in a full bundle adjustment pipeline (see total_least_squares)
+
+
+
+![](report/images/OneStep_landmark_and_pose.png)
+![](report/images/OneStep_landmarks_optimized.png)
