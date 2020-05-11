@@ -35,6 +35,7 @@ Expected Output:
    - embed the obtained measures in a full bundle adjustment pipeline (see total_least_squares)
 
 
+Some of the results:
 
 ![](report/images/OneStep_landmark_and_pose.png)
 ![](report/images/OneStep_landmarks_optimized.png)
